@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Seller Performance Control Tower</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<style>
+  :root{
+    --bg:#0F1418;
+    --surface:#161D24;
+    --surface-2:#1E2730;
+    --border:#2A343E;
+    --text:#E9EDF1;
+    --muted:#8B98A5;
+    --amber:#FFB020;
+    --amber-dim:#3A2E14;
+    --green:#3DDC97;
+    --red:#F2586B;
+    --c-adg:#3DDC97;
+    --c-offsite:#38BDF8;
+    --c-paidads:#818CF8;
+    --c-livestream:#F472B6;
+    --c-video:#FB923C;
+    --c-other:#64748B;
+    --radius:10px;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;}
+  h1,h2,h3,.display{font-family:'Space Grotesk',sans-serif;}
+  .mono{font-family:'JetBrains Mono',monospace;}
+
+  /* ---------- Top config bar ---------- */
+  .configbar{
+    display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+    padding:10px 20px;background:var(--surface);border-bottom:1px solid var(--border);
+    position:sticky;top:0;z-index:50;
+  }
+  .configbar .brand{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:15px;letter-spacing:.02em;color:var(--amber);margin-right:8px;white-space:nowrap;}
+  .configbar input{
+    background:var(--surface-2);border:1px solid var(--border);color:var(--text);
+    padding:7px 10px;border-radius:7px;font-size:12.5px;font-family:'JetBrains Mono',monospace;
+    width:340px;max-width:40vw;
+  }
+  .configbar button{
+    background:var(--amber);color:#1A1200;border:none;padding:8px 16px;border-radius:7px;
+    font-weight:600;font-size:13px;cursor:pointer;font-family:'Inter',sans-serif;
+  }
+  .configbar button:hover{filter:brightness(1.08);}
+  .status{font-size:12px;color:var(--muted);margin-left:auto;display:flex;align-items:center;gap:8px;}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--muted);}
+  .dot.ok{background:var(--green);}
+  .dot.err{background:var(--red);}
+  .dot.loading{background:var(--amber);animation:pulse 1s infinite;}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+
+  /* ---------- layout ---------- */
+  .shell{display:flex;min-height:calc(100vh - 52px);}
+  nav.side{
+    width:220px;flex-shrink:0;background:var(--surface);border-right:1px solid var(--border);
+    padding:18px 10px;
+  }
+  nav.side .navitem{
+    display:flex;align-items:center;gap:10px;padding:11px 12px;border-radius:8px;
+    color:var(--muted);font-size:13.5px;font-weight:500;cursor:pointer;margin-bottom:4px;
+  }
+  nav.side .navitem:hover{background:var(--surface-2);color:var(--text);}
+  nav.side .navitem.active{background:var(--amber-dim);color:var(--amber);font-weight:600;}
+  nav.side .navlabel{font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:#5A6572;padding:14px 12px 6px;}
+
+  main{flex:1;padding:24px 28px;overflow-x:auto;}
+  .panel{display:none;}
+  .panel.active{display:block;}
+  .pagehead{margin-bottom:18px;}
+  .pagehead h1{font-size:20px;margin:0 0 4px;}
+  .pagehead p{margin:0;color:var(--muted);font-size:13px;}
+
+  .errorbox{background:#2A1418;border:1px solid #5C2530;color:#F2A0AC;padding:16px 18px;border-radius:var(--radius);font-size:13px;line-height:1.6;}
+  .errorbox b{color:#F2586B;}
+  .errorbox code{background:#1a0d10;padding:1px 5px;border-radius:4px;}
+
+  /* ---------- controls row ---------- */
+  .controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:18px;}
+  .seg{display:flex;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;overflow:hidden;}
+  .seg button{
+    background:transparent;border:none;color:var(--muted);padding:8px 14px;font-size:12.5px;font-weight:500;
+    cursor:pointer;font-family:'Inter',sans-serif;border-right:1px solid var(--border);
+  }
+  .seg button:last-child{border-right:none;}
+  .seg button.on{background:var(--amber);color:#1A1200;font-weight:700;}
+  select{
+    background:var(--surface-2);border:1px solid var(--border);color:var(--text);padding:8px 12px;
+    border-radius:8px;font-size:12.5px;font-family:'Inter',sans-serif;
+  }
+
+  /* ---------- KPI cards ---------- */
+  .kpicards{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:20px;}
+  .kpicard{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;position:relative;overflow:hidden;}
+  .kpicard::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--accent,var(--amber));}
+  .kpicard .lbl{font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;}
+  .kpicard .val{font-family:'Space Grotesk',sans-serif;font-size:22px;font-weight:700;}
+  .kpicard .delta{font-size:12px;margin-top:6px;font-family:'JetBrains Mono',monospace;}
+  .delta.up{color:var(--green);} .delta.down{color:var(--red);}
+
+  /* ---------- table ---------- */
+  table{width:100%;border-collapse:collapse;background:var(--surface);border-radius:var(--radius);overflow:hidden;font-size:12.5px;}
+  thead th{
+    text-align:left;padding:10px 12px;background:var(--surface-2);color:var(--muted);
+    font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.04em;
+    cursor:pointer;user-select:none;white-space:nowrap;
+  }
+  thead th:hover{color:var(--text);}
+  tbody td{padding:9px 12px;border-top:1px solid var(--border);white-space:nowrap;}
+  tbody tr:hover{background:var(--surface-2);}
+  .num{text-align:right;font-family:'JetBrains Mono',monospace;}
+  .tag{display:inline-block;padding:2px 8px;border-radius:20px;font-size:10.5px;font-weight:600;}
+  .tag.up{background:#0F2E23;color:var(--green);}
+  .tag.down{background:#301419;color:var(--red);}
+
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;}
+  @media(max-width:900px){.grid2{grid-template-columns:1fr;}}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;}
+  .card h3{margin:0 0 12px;font-size:13.5px;color:var(--text);}
+  .movrow{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);font-size:12.5px;}
+  .movrow:last-child{border-bottom:none;}
+  .movrow .name{color:var(--text);font-weight:500;}
+  .movrow .sub{color:var(--muted);font-size:11px;}
+
+  .chartwrap{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;margin-bottom:20px;}
+  canvas{max-height:280px;}
+
+  /* ---------- growth bars (source of growth) ---------- */
+  .gbar-row{margin-bottom:14px;}
+  .gbar-top{display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:5px;}
+  .gbar-top .name{font-weight:600;}
+  .gbar-top .val{font-family:'JetBrains Mono',monospace;color:var(--muted);}
+  .gbar-track{height:10px;background:var(--surface-2);border-radius:6px;overflow:hidden;position:relative;}
+  .gbar-fill{height:100%;border-radius:6px;}
+
+  .footnote{font-size:11.5px;color:#5A6572;margin-top:6px;line-height:1.6;}
+  .pill{display:inline-block;font-size:10px;padding:2px 7px;border-radius:5px;background:var(--surface-2);color:var(--muted);margin-left:6px;}
+</style>
+</head>
+<body>
+
+<div class="configbar">
+  <span class="brand">◆ SELLER CONTROL TOWER</span>
+  <input id="sheetIdInput" placeholder="Google Sheet ID hoặc link đầy đủ...">
+  <button onclick="reloadData()">Tải dữ liệu</button>
+  <div class="status"><span class="dot" id="statusDot"></span><span id="statusText">Chưa tải dữ liệu</span></div>
+</div>
+
+<div class="shell">
+  <nav class="side">
+    <div class="navlabel">Portal</div>
+    <div class="navitem active" data-tab="seller" onclick="switchTab('seller')">📊 Seller performance</div>
+    <div class="navitem" data-tab="source" onclick="switchTab('source')">🌱 Source of growth</div>
+    <div class="navitem" data-tab="model" onclick="switchTab('model')">📦 Model performance</div>
+  </nav>
+
+  <main>
+    <!-- ================= SELLER PERFORMANCE ================= -->
+    <section class="panel active" id="panel-seller">
+      <div class="pagehead">
+        <h1>Seller performance</h1>
+        <p>Theo dõi 5 program KPI theo từng seller · so sánh M0 vs M-1</p>
+      </div>
+      <div id="seller-content"><div class="errorbox">Đang chờ tải dữ liệu từ Google Sheet…</div></div>
+    </section>
+
+    <!-- ================= SOURCE OF GROWTH ================= -->
+    <section class="panel" id="panel-source">
+      <div class="pagehead">
+        <h1>Source of growth</h1>
+        <p>Tăng trưởng ADG (Actual Delivered GMV) MoM đến từ program nào</p>
+      </div>
+      <div id="source-content"><div class="errorbox">Đang chờ tải dữ liệu từ Google Sheet…</div></div>
+    </section>
+
+    <!-- ================= MODEL PERFORMANCE ================= -->
+    <section class="panel" id="panel-model">
+      <div class="pagehead">
+        <h1>Model performance</h1>
+        <p>ADG &amp; Offsite (Shopee voucher/rebate) breakdown theo model · <span class="pill">Paid ads / Livestream / Video chưa có ở cấp model</span></p>
+      </div>
+      <div id="model-content"><div class="errorbox">Đang chờ tải dữ liệu từ Google Sheet…</div></div>
+    </section>
+  </main>
+</div>
+
+<script>
+/* ============================================================================
+   CONFIG — THAY SHEET_ID Ở ĐÂY khi đổi Google Sheet (hoặc dùng ô input trên UI)
+   Sheet phải để chế độ share "Anyone with the link" (Viewer)
+   Tên tab (sheet name) PHẢI giữ nguyên đúng như dưới đây khi đổi sheet mới.
+============================================================================ */
+const CONFIG = {
+  SHEET_ID: "1FNIFw0D4WEZvS0zMJD861wAMdnMfYoo4Tja2HZ8YzHQ", // sheet thật của Huyentran template_Seller performance
+  TABS: {
+    rawSeller: "raw_seller performance",
+    rawModel: "raw_model performance"
+  },
+  HEADER_ROW: 4 // dòng chứa header ("month", "start_date", ...) — chỉnh nếu sheet mới có header ở dòng khác
+};
+
+// ---- KPI program definitions (raw_seller performance columns) ----
+const KPI_DEFS = {
+  adg:        { label:"ADG (Actual Delivered GMV)", color:"var(--c-adg)",        fields:["adgmv"] },
+  offsite:    { label:"Offsite expense (AMS/Affiliate)", color:"var(--c-offsite)", fields:["ams_aff_commission(SUM)"] },
+  paidads:    { label:"Paid Ads (spend)",            color:"var(--c-paidads)",   fields:["daily_paidads_expense"] },
+  livestream: { label:"Seller Livestream (ADG)",     color:"var(--c-livestream)",fields:["adgmv_from_livestream"] },
+  video:      { label:"Seller Video (ADG)",          color:"var(--c-video)",     fields:["admgv_from_seller_video","adgmv_from_creator_video"] }
+};
+
+// ---- Source-of-growth attribution buckets (all measured as adgmv contribution) ----
+const GROWTH_BUCKETS = [
+  { key:"offsite",    label:"Offsite / Affiliate",     color:"var(--c-offsite)",    fields:["gmv_from_aff_seller","gmv_from_aff_ams"] },
+  { key:"paidads",    label:"Paid Ads",                color:"var(--c-paidads)",    fields:["adgmv_from_paidads","adgmv_from_paidads_broad"] },
+  { key:"livestream", label:"Seller Livestream",       color:"var(--c-livestream)", fields:["adgmv_from_livestream","adgmv_from_live_xtra","adgmv_from_live_ads"] },
+  { key:"video",      label:"Seller Video",            color:"var(--c-video)",      fields:["admgv_from_seller_video","adgmv_from_creator_video"] }
+  // "Khác" (platform promo + organic) is computed as residual = adgmv - sum(above)
+];
+
+let RAW_SELLER = [];   // array of row objects
+let RAW_MODEL = [];
+let charts = {};       // keep chart instances to destroy on re-render
+
+// ---------------- helpers ----------------
+function parseNum(v){
+  if(v===undefined||v===null||v==='') return 0;
+  const n = parseFloat(String(v).replace(/,/g,''));
+  return isNaN(n) ? 0 : n;
+}
+function fmt(n){
+  if(Math.abs(n) >= 1e9) return (n/1e9).toFixed(2)+"B";
+  if(Math.abs(n) >= 1e6) return (n/1e6).toFixed(2)+"M";
+  if(Math.abs(n) >= 1e3) return (n/1e3).toFixed(1)+"K";
+  return Math.round(n).toLocaleString('vi-VN');
+}
+function fmtFull(n){ return Math.round(n).toLocaleString('vi-VN'); }
+function pct(n){ return (n>=0?"+":"") + (n*100).toFixed(1) + "%"; }
+function extractSheetId(input){
+  const m = input.match(/\/d\/(?:e\/)?([a-zA-Z0-9-_]+)/);
+  return m ? m[1] : input.trim();
+}
+function sumFields(row, fields){
+  return fields.reduce((s,f)=> s + parseNum(row[f]), 0);
+}
+
+function gvizUrl(sheetId, tabName, range){
+  const base = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(tabName)}`;
+  return range ? `${base}&range=${encodeURIComponent(range)}` : base;
+}
+
+async function fetchCsv_(url){
+  let res;
+  try{
+    res = await fetch(url);
+  }catch(networkErr){
+    throw new Error(`Không kết nối được tới Google Sheets (network/CORS). Chi tiết: ${networkErr.message}`);
+  }
+  const text = await res.text();
+  if(!res.ok){
+    throw new Error(`HTTP ${res.status}. Phản hồi đầu: "${text.slice(0,200).replace(/\n/g,' ')}"`);
+  }
+  if(text.trim().startsWith("<")){
+    throw new Error(`Nhận về HTML thay vì CSV — sheet có thể chưa public đủ hoặc bị redirect sang trang đăng nhập. Đầu phản hồi: "${text.trim().slice(0,150).replace(/\n/g,' ')}"`);
+  }
+  return Papa.parse(text, {skipEmptyLines:false}).data;
+}
+
+function rowsToObjects_(headers, dataRows){
+  return dataRows
+    .filter(r => r.some(c => c !== "" && c !== undefined))
+    .map(r => {
+      const obj = {};
+      headers.forEach((h,i) => obj[h] = r[i]);
+      return obj;
+    });
+}
+
+async function fetchTab(sheetId, tabName){
+  // Cách 1 (ưu tiên): nhảy thẳng tới dòng header đã biết (CONFIG.HEADER_ROW) bằng tham số range của gviz.
+  try{
+    const rangeUrl = gvizUrl(sheetId, tabName, `A${CONFIG.HEADER_ROW}:ZZZ`);
+    const rows = await fetchCsv_(rangeUrl);
+    if(rows.length && rows[0].some(c => (c||"").toString().trim().toLowerCase() === "month")){
+      const headers = rows[0].map(h => (h||"").toString().trim());
+      return rowsToObjects_(headers, rows.slice(1));
+    }
+    console.warn(`[${tabName}] range=A${CONFIG.HEADER_ROW} không khớp header "month" ở dòng đầu, thử fallback quét toàn bộ sheet…`);
+  }catch(e){
+    console.warn(`[${tabName}] fetch theo range lỗi (${e.message}), thử fallback…`);
+  }
+
+  // Cách 2 (fallback): tải toàn bộ tab, quét tối đa 30 dòng đầu để tìm ô "month" (bất kể cột nào).
+  const rows = await fetchCsv_(gvizUrl(sheetId, tabName));
+  let headerRowIdx = -1, colOffset = -1;
+  for(let i=0; i<Math.min(rows.length, 30); i++){
+    const idx = rows[i].findIndex(c => (c||"").toString().trim().toLowerCase() === "month");
+    if(idx !== -1){ headerRowIdx = i; colOffset = idx; break; }
+  }
+  if(headerRowIdx === -1){
+    const preview = rows.slice(0,10).map((r,i)=>`[dòng ${i+1}] `+r.slice(0,10).join(" | ")).join("\n");
+    throw new Error(`Không tìm thấy cột "month" trong 30 dòng đầu của tab "${tabName}" (cả 2 cách đều thất bại). Preview dữ liệu nhận được:\n${preview}`);
+  }
+  const headers = rows[headerRowIdx].slice(colOffset).map(h => (h||"").toString().trim());
+  const dataRows = rows.slice(headerRowIdx+1).map(r => r.slice(colOffset));
+  return rowsToObjects_(headers, dataRows);
+}
+
+// ---------------- data loading ----------------
+async function reloadData(){
+  const inputVal = document.getElementById('sheetIdInput').value.trim();
+  if(inputVal) CONFIG.SHEET_ID = extractSheetId(inputVal);
+  document.getElementById('sheetIdInput').value = CONFIG.SHEET_ID;
+
+  setStatus('loading', 'Đang tải dữ liệu…');
+  try{
+    const [rawSeller, rawModel] = await Promise.all([
+      fetchTab(CONFIG.SHEET_ID, CONFIG.TABS.rawSeller),
+      fetchTab(CONFIG.SHEET_ID, CONFIG.TABS.rawModel).catch(e=>{ console.warn('model tab lỗi:', e); return []; })
+    ]);
+    RAW_SELLER = rawSeller;
+    RAW_MODEL = rawModel;
+    setStatus('ok', `Đã tải ${rawSeller.length} dòng seller · ${rawModel.length} dòng model — ${new Date().toLocaleTimeString('vi-VN')}`);
+    renderSellerTab();
+    renderSourceTab();
+    renderModelTab();
+  }catch(err){
+    console.error(err);
+    setStatus('err', 'Lỗi tải dữ liệu');
+    const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const msg = `
+      <div class="errorbox">
+        <b>Không tải được dữ liệu:</b>
+        <pre style="white-space:pre-wrap;font-family:'JetBrains Mono',monospace;font-size:11.5px;margin:8px 0;color:#F2A0AC;">${esc(err.message)}</pre>
+        Kiểm tra lại:<br>
+        1. Google Sheet đã chia sẻ ở chế độ <code>Anyone with the link</code> (Viewer hoặc Editor) chưa?<br>
+        2. Sheet ID đúng chưa? (lấy từ URL <code>/d/&lt;ID&gt;/edit</code>)<br>
+        3. Tên các tab trong Sheet có đúng: <code>${CONFIG.TABS.rawSeller}</code>, <code>${CONFIG.TABS.rawModel}</code> không? (phải giữ nguyên tên khi đổi sheet mới)<br>
+        4. Thử mở link CSV trực tiếp trên trình duyệt để xem lỗi gốc: <code>${esc(gvizUrl(CONFIG.SHEET_ID, CONFIG.TABS.rawSeller))}</code>
+      </div>`;
+    document.getElementById('seller-content').innerHTML = msg;
+    document.getElementById('source-content').innerHTML = msg;
+    document.getElementById('model-content').innerHTML = msg;
+  }
+}
+function setStatus(kind, text){
+  document.getElementById('statusDot').className = 'dot ' + kind;
+  document.getElementById('statusText').textContent = text;
+}
+
+// ---------------- tab switching ----------------
+function switchTab(name){
+  document.querySelectorAll('.navitem').forEach(el=>el.classList.toggle('active', el.dataset.tab===name));
+  document.querySelectorAll('.panel').forEach(el=>el.classList.remove('active'));
+  document.getElementById('panel-'+name).classList.add('active');
+}
+
+// ================================================================
+// SELLER PERFORMANCE TAB
+// ================================================================
+let sellerState = { kpi:'adg', metricMode:'pct', trendMode:false };
+
+function getMonths(rows){
+  const set = new Set(rows.map(r=>parseNum(r.month)));
+  return Array.from(set).sort((a,b)=>a-b);
+}
+
+function aggBySeller(rows, month, fields){
+  const map = {};
+  rows.filter(r=>parseNum(r.month)===month).forEach(r=>{
+    const id = r.shop_id;
+    if(!map[id]) map[id] = { shop_id:id, seller_name:r.seller_name, seller_function:r.seller_function, main_cat:r.main_cat, value:0 };
+    map[id].value += sumFields(r, fields);
+  });
+  return map;
+}
+
+function renderSellerTab(){
+  if(!RAW_SELLER.length) return;
+  const months = getMonths(RAW_SELLER);
+  const m0 = months[months.length-1];
+  const m1 = months[months.length-2];
+  const def = KPI_DEFS[sellerState.kpi];
+
+  const cur = aggBySeller(RAW_SELLER, m0, def.fields);
+  const prev = aggBySeller(RAW_SELLER, m1, def.fields);
+
+  const ids = new Set([...Object.keys(cur), ...Object.keys(prev)]);
+  let list = Array.from(ids).map(id=>{
+    const c = cur[id] || {shop_id:id, seller_name:(prev[id]||{}).seller_name, seller_function:(prev[id]||{}).seller_function, value:0};
+    const p = prev[id] || {value:0};
+    const delta = c.value - p.value;
+    const deltaPct = p.value !== 0 ? delta/Math.abs(p.value) : (c.value!==0 ? 1 : 0);
+    return { ...c, m0:c.value, m1:p.value, delta, deltaPct };
+  });
+
+  const totalM0 = list.reduce((s,r)=>s+r.m0,0);
+  const totalM1 = list.reduce((s,r)=>s+r.m1,0);
+  const totalDelta = totalM0-totalM1;
+  const totalDeltaPct = totalM1!==0 ? totalDelta/Math.abs(totalM1) : 0;
+
+  // sort default by m0 desc
+  list.sort((a,b)=>b.m0-a.m0);
+
+  // top grow / drop based on metric mode
+  const sortKey = sellerState.metricMode==='pct' ? 'deltaPct' : 'delta';
+  const grow = [...list].filter(r=>r.delta>0).sort((a,b)=>b[sortKey]-a[sortKey]).slice(0,5);
+  const drop = [...list].filter(r=>r.delta<0).sort((a,b)=>a[sortKey]-b[sortKey]).slice(0,5);
+
+  let html = `
+    <div class="controls">
+      <div class="seg" id="kpiSeg">
+        ${Object.keys(KPI_DEFS).map(k=>`<button class="${k===sellerState.kpi?'on':''}" onclick="setSellerKpi('${k}')">${KPI_DEFS[k].label}</button>`).join('')}
+      </div>
+      <div class="seg">
+        <button class="${sellerState.metricMode==='pct'?'on':''}" onclick="setMetricMode('pct')">% MoM</button>
+        <button class="${sellerState.metricMode==='abs'?'on':''}" onclick="setMetricMode('abs')">Giá trị tuyệt đối</button>
+      </div>
+      <div class="seg">
+        <button class="${!sellerState.trendMode?'on':''}" onclick="setTrendMode(false)">M0 vs M-1</button>
+        <button class="${sellerState.trendMode?'on':''}" onclick="setTrendMode(true)">Xem trend nhiều tháng</button>
+      </div>
+    </div>
+
+    <div class="kpicards">
+      <div class="kpicard" style="--accent:${def.color}">
+        <div class="lbl">${def.label} — Tổng M0 (tháng ${m0})</div>
+        <div class="val">${fmt(totalM0)}</div>
+        <div class="delta ${totalDelta>=0?'up':'down'}">${totalDelta>=0?'▲':'▼'} ${fmt(Math.abs(totalDelta))} (${pct(totalDeltaPct)}) vs M-1</div>
+      </div>
+      <div class="kpicard" style="--accent:var(--muted)">
+        <div class="lbl">Tổng M-1 (tháng ${m1})</div>
+        <div class="val">${fmt(totalM1)}</div>
+        <div class="delta">Base so sánh</div>
+      </div>
+      <div class="kpicard" style="--accent:var(--green)">
+        <div class="lbl">Số seller tăng trưởng</div>
+        <div class="val">${list.filter(r=>r.delta>0).length}<span style="font-size:13px;color:var(--muted)">/${list.length}</span></div>
+        <div class="delta up">Đang scale ${def.label.toLowerCase()}</div>
+      </div>
+      <div class="kpicard" style="--accent:var(--red)">
+        <div class="lbl">Số seller sụt giảm</div>
+        <div class="val">${list.filter(r=>r.delta<0).length}<span style="font-size:13px;color:var(--muted)">/${list.length}</span></div>
+        <div class="delta down">Cần theo dõi</div>
+      </div>
+    </div>
+
+    ${sellerState.trendMode ? `<div class="chartwrap"><h3 style="margin:0 0 10px;font-size:13.5px;">Xu hướng ${def.label} theo tháng (toàn bộ seller)</h3><canvas id="trendChart"></canvas></div>` : ''}
+
+    <div class="grid2">
+      <div class="card">
+        <h3>🚀 Top 5 Grow MoM — ${def.label}</h3>
+        ${grow.map(r=>movRow(r,true)).join('') || '<div class="footnote">Không có seller tăng trưởng</div>'}
+      </div>
+      <div class="card">
+        <h3>📉 Top 5 Drop MoM — ${def.label}</h3>
+        ${drop.map(r=>movRow(r,false)).join('') || '<div class="footnote">Không có seller sụt giảm</div>'}
+      </div>
+    </div>
+
+    <table>
+      <thead><tr>
+        <th onclick="sortSellerTable('seller_name')">Seller</th>
+        <th onclick="sortSellerTable('seller_function')">Function</th>
+        <th class="num" onclick="sortSellerTable('m1')">M-1</th>
+        <th class="num" onclick="sortSellerTable('m0')">M0</th>
+        <th class="num" onclick="sortSellerTable('delta')">Δ</th>
+        <th class="num" onclick="sortSellerTable('deltaPct')">Δ%</th>
+      </tr></thead>
+      <tbody>
+        ${list.map(r=>`<tr>
+          <td>${r.seller_name||r.shop_id}</td>
+          <td>${r.seller_function||'-'}</td>
+          <td class="num">${fmtFull(r.m1)}</td>
+          <td class="num">${fmtFull(r.m0)}</td>
+          <td class="num">${r.delta>=0?'+':''}${fmtFull(r.delta)}</td>
+          <td class="num"><span class="tag ${r.delta>=0?'up':'down'}">${pct(r.deltaPct)}</span></td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+    <div class="footnote">M0 = tháng ${m0} (mới nhất) · M-1 = tháng ${m1} · Δ% với M-1=0 hiển thị theo quy ước riêng.</div>
+  `;
+  document.getElementById('seller-content').innerHTML = html;
+  window._sellerList = list;
+
+  if(sellerState.trendMode){
+    renderTrendChart(months, def);
+  }
+}
+
+function movRow(r, isGrow){
+  const val = sellerState.metricMode==='pct' ? pct(r.deltaPct) : (r.delta>=0?'+':'')+fmt(r.delta);
+  return `<div class="movrow">
+    <div><div class="name">${r.seller_name||r.shop_id}</div><div class="sub">${r.seller_function||''}</div></div>
+    <div class="tag ${isGrow?'up':'down'}">${val}</div>
+  </div>`;
+}
+
+function renderTrendChart(months, def){
+  const ctx = document.getElementById('trendChart');
+  if(!ctx) return;
+  const totals = months.map(m=>{
+    const agg = aggBySeller(RAW_SELLER, m, def.fields);
+    return Object.values(agg).reduce((s,r)=>s+r.value,0);
+  });
+  if(charts.trend) charts.trend.destroy();
+  charts.trend = new Chart(ctx, {
+    type:'line',
+    data:{ labels: months.map(m=>'Th.'+m), datasets:[{
+      label: def.label, data: totals, borderColor: getCssVar(def.color), backgroundColor: getCssVar(def.color)+'33',
+      fill:true, tension:.35, pointRadius:3
+    }]},
+    options:{ responsive:true, plugins:{legend:{display:false}}, scales:{
+      y:{ ticks:{ color:'#8B98A5', callback:v=>fmt(v) }, grid:{color:'#2A343E'} },
+      x:{ ticks:{ color:'#8B98A5' }, grid:{display:false} }
+    }}
+  });
+}
+function getCssVar(v){
+  if(v.startsWith('var(')) return getComputedStyle(document.documentElement).getPropertyValue(v.slice(4,-1)).trim();
+  return v;
+}
+
+function setSellerKpi(k){ sellerState.kpi=k; renderSellerTab(); }
+function setMetricMode(m){ sellerState.metricMode=m; renderSellerTab(); }
+function setTrendMode(v){ sellerState.trendMode=v; renderSellerTab(); }
+let sellerSortDir = {};
+function sortSellerTable(key){
+  sellerSortDir[key] = !sellerSortDir[key];
+  const dir = sellerSortDir[key] ? 1 : -1;
+  window._sellerList.sort((a,b)=> (a[key]>b[key]?1:-1)*dir );
+  renderSellerTableOnly();
+}
+function renderSellerTableOnly(){ renderSellerTab(); } // simplicity: full re-render (state preserved via window._sellerList not reused here, acceptable trade-off)
+
+// ================================================================
+// SOURCE OF GROWTH TAB
+// ================================================================
+let sourceState = { seller:'__ALL__' };
+
+function renderSourceTab(){
+  if(!RAW_SELLER.length) return;
+  const months = getMonths(RAW_SELLER);
+  const m0 = months[months.length-1];
+  const m1 = months[months.length-2];
+
+  const sellersM0 = aggBySeller(RAW_SELLER, m0, ['adgmv']);
+  const sellerOptions = Object.values(sellersM0).sort((a,b)=>(a.seller_name||'').localeCompare(b.seller_name||''));
+
+  const rowsM0 = RAW_SELLER.filter(r=>parseNum(r.month)===m0 && (sourceState.seller==='__ALL__' || r.shop_id===sourceState.seller));
+  const rowsM1 = RAW_SELLER.filter(r=>parseNum(r.month)===m1 && (sourceState.seller==='__ALL__' || r.shop_id===sourceState.seller));
+
+  const totalAdgM0 = rowsM0.reduce((s,r)=>s+parseNum(r.adgmv),0);
+  const totalAdgM1 = rowsM1.reduce((s,r)=>s+parseNum(r.adgmv),0);
+  const totalDelta = totalAdgM0 - totalAdgM1;
+
+  const buckets = GROWTH_BUCKETS.map(b=>{
+    const vM0 = rowsM0.reduce((s,r)=>s+sumFields(r,b.fields),0);
+    const vM1 = rowsM1.reduce((s,r)=>s+sumFields(r,b.fields),0);
+    return { ...b, m0:vM0, m1:vM1, delta:vM0-vM1 };
+  });
+  const attributedDelta = buckets.reduce((s,b)=>s+b.delta,0);
+  const otherDelta = totalDelta - attributedDelta;
+  const otherM0 = totalAdgM0 - buckets.reduce((s,b)=>s+b.m0,0);
+  const otherM1 = totalAdgM1 - buckets.reduce((s,b)=>s+b.m1,0);
+  buckets.push({ key:'other', label:'Khác (platform promo / organic)', color:'var(--c-other)', m0:otherM0, m1:otherM1, delta:otherDelta });
+
+  const maxAbsDelta = Math.max(...buckets.map(b=>Math.abs(b.delta)), 1);
+
+  const selLabel = sourceState.seller==='__ALL__' ? `Toàn bộ ${sellerOptions.length} seller` : (sellersM0[sourceState.seller]?.seller_name || sourceState.seller);
+
+  let html = `
+    <div class="controls">
+      <select onchange="setSourceSeller(this.value)">
+        <option value="__ALL__" ${sourceState.seller==='__ALL__'?'selected':''}>— Toàn bộ ${sellerOptions.length} seller —</option>
+        ${sellerOptions.map(s=>`<option value="${s.shop_id}" ${sourceState.seller===s.shop_id?'selected':''}>${s.seller_name||s.shop_id}</option>`).join('')}
+      </select>
+    </div>
+
+    <div class="kpicards">
+      <div class="kpicard" style="--accent:var(--c-adg)">
+        <div class="lbl">ADG M0 (tháng ${m0}) — ${selLabel}</div>
+        <div class="val">${fmt(totalAdgM0)}</div>
+      </div>
+      <div class="kpicard" style="--accent:var(--muted)">
+        <div class="lbl">ADG M-1 (tháng ${m1})</div>
+        <div class="val">${fmt(totalAdgM1)}</div>
+      </div>
+      <div class="kpicard" style="--accent:${totalDelta>=0?'var(--green)':'var(--red)'}">
+        <div class="lbl">Tăng trưởng MoM</div>
+        <div class="val">${totalDelta>=0?'+':''}${fmt(totalDelta)}</div>
+        <div class="delta ${totalDelta>=0?'up':'down'}">${pct(totalAdgM1!==0?totalDelta/Math.abs(totalAdgM1):0)}</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Δ ADG MoM được đóng góp bởi program nào?</h3>
+      ${buckets.map(b=>{
+        const w = Math.min(100, Math.abs(b.delta)/maxAbsDelta*100);
+        const col = getCssVar(b.color);
+        return `<div class="gbar-row">
+          <div class="gbar-top">
+            <span class="name" style="color:${col}">${b.label}</span>
+            <span class="val">${b.delta>=0?'+':''}${fmt(b.delta)} &nbsp; (${pct(totalDelta!==0? b.delta/Math.abs(totalDelta) : 0)} của tổng Δ)</span>
+          </div>
+          <div class="gbar-track"><div class="gbar-fill" style="width:${w}%;background:${col};opacity:${b.delta<0?0.5:1}"></div></div>
+        </div>`;
+      }).join('')}
+      <div class="footnote">Δ dương = program này kéo ADG tăng so với M-1 · Δ âm = program này kéo ADG giảm. Tổng các Δ program (bao gồm "Khác") = Δ ADG tổng.</div>
+    </div>
+
+    <table style="margin-top:16px">
+      <thead><tr><th>Program</th><th class="num">M-1</th><th class="num">M0</th><th class="num">Δ</th><th class="num">% tổng ADG (M0)</th></tr></thead>
+      <tbody>
+        ${buckets.map(b=>`<tr>
+          <td style="color:${getCssVar(b.color)}">●&nbsp; ${b.label}</td>
+          <td class="num">${fmtFull(b.m1)}</td>
+          <td class="num">${fmtFull(b.m0)}</td>
+          <td class="num">${b.delta>=0?'+':''}${fmtFull(b.delta)}</td>
+          <td class="num">${totalAdgM0!==0 ? (b.m0/totalAdgM0*100).toFixed(1) : '0.0'}%</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+  `;
+  document.getElementById('source-content').innerHTML = html;
+}
+function setSourceSeller(v){ sourceState.seller=v; renderSourceTab(); }
+
+// ================================================================
+// MODEL PERFORMANCE TAB  (ADG + Offsite/voucher-rebate only, by model)
+// ================================================================
+let modelState = { seller:'__ALL__' };
+
+const MODEL_OFFSITE_FIELDS = ['daily_shopee_direct_vc_cost','daily_shopee_cashback_vc_cost','daily_shopee_item_rebate_cost'];
+
+function aggByModel(rows, month, sellerFilter){
+  const map = {};
+  rows.filter(r=>parseNum(r.month)===month && (sellerFilter==='__ALL__'||r.shop_id===sellerFilter)).forEach(r=>{
+    const key = r.shop_id+'::'+r.model_id;
+    if(!map[key]) map[key] = { key, shop_id:r.shop_id, seller_name:r.seller_name, model_name:r.model_name, item_name:r.item_name, adg:0, offsite:0 };
+    map[key].adg += parseNum(r.adgmv);
+    map[key].offsite += sumFields(r, MODEL_OFFSITE_FIELDS);
+  });
+  return map;
+}
+
+function renderModelTab(){
+  if(!RAW_MODEL.length){
+    document.getElementById('model-content').innerHTML = `<div class="errorbox">Không có dữ liệu ở tab "<code>${CONFIG.TABS.rawModel}</code>". Kiểm tra tên tab / quyền chia sẻ.</div>`;
+    return;
+  }
+  const months = getMonths(RAW_MODEL);
+  const m0 = months[months.length-1];
+  const m1 = months[months.length-2];
+
+  const sellerOptions = Array.from(new Set(RAW_MODEL.map(r=>r.shop_id))).map(id=>{
+    const row = RAW_MODEL.find(r=>r.shop_id===id);
+    return { shop_id:id, seller_name: row.seller_name };
+  }).sort((a,b)=>(a.seller_name||'').localeCompare(b.seller_name||''));
+
+  const cur = aggByModel(RAW_MODEL, m0, modelState.seller);
+  const prev = aggByModel(RAW_MODEL, m1, modelState.seller);
+  const keys = new Set([...Object.keys(cur), ...Object.keys(prev)]);
+
+  let list = Array.from(keys).map(k=>{
+    const c = cur[k] || { ...prev[k], adg:0, offsite:0 };
+    const p = prev[k] || { adg:0, offsite:0 };
+    return {
+      ...c,
+      adgM0:c.adg, adgM1:p.adg, adgDelta:c.adg-p.adg,
+      offsiteM0:c.offsite, offsiteM1:p.offsite, offsiteDelta:c.offsite-p.offsite
+    };
+  });
+  list.sort((a,b)=>b.adgM0-a.adgM0);
+
+  const totalAdgM0 = list.reduce((s,r)=>s+r.adgM0,0);
+  const totalAdgM1 = list.reduce((s,r)=>s+r.adgM1,0);
+  const totalOffsiteM0 = list.reduce((s,r)=>s+r.offsiteM0,0);
+
+  const grow = [...list].filter(r=>r.adgDelta>0).sort((a,b)=>b.adgDelta-a.adgDelta).slice(0,5);
+  const drop = [...list].filter(r=>r.adgDelta<0).sort((a,b)=>a.adgDelta-b.adgDelta).slice(0,5);
+
+  let html = `
+    <div class="controls">
+      <select onchange="setModelSeller(this.value)">
+        <option value="__ALL__" ${modelState.seller==='__ALL__'?'selected':''}>— Toàn bộ seller —</option>
+        ${sellerOptions.map(s=>`<option value="${s.shop_id}" ${modelState.seller===s.shop_id?'selected':''}>${s.seller_name||s.shop_id}</option>`).join('')}
+      </select>
+    </div>
+
+    <div class="kpicards">
+      <div class="kpicard" style="--accent:var(--c-adg)">
+        <div class="lbl">ADG M0 (tháng ${m0})</div>
+        <div class="val">${fmt(totalAdgM0)}</div>
+        <div class="delta ${(totalAdgM0-totalAdgM1)>=0?'up':'down'}">${(totalAdgM0-totalAdgM1)>=0?'▲':'▼'} ${fmt(Math.abs(totalAdgM0-totalAdgM1))} vs M-1</div>
+      </div>
+      <div class="kpicard" style="--accent:var(--c-offsite)">
+        <div class="lbl">Offsite cost M0 (voucher/rebate)</div>
+        <div class="val">${fmt(totalOffsiteM0)}</div>
+      </div>
+      <div class="kpicard" style="--accent:var(--muted)">
+        <div class="lbl">Số model theo dõi</div>
+        <div class="val">${list.length}</div>
+      </div>
+    </div>
+
+    <div class="grid2">
+      <div class="card">
+        <h3>🚀 Top 5 Model Grow ADG MoM</h3>
+        ${grow.map(r=>`<div class="movrow"><div><div class="name">${(r.model_name||r.item_name||'').slice(0,40)}</div><div class="sub">${r.seller_name}</div></div><div class="tag up">+${fmt(r.adgDelta)}</div></div>`).join('') || '<div class="footnote">Không có model tăng trưởng</div>'}
+      </div>
+      <div class="card">
+        <h3>📉 Top 5 Model Drop ADG MoM</h3>
+        ${drop.map(r=>`<div class="movrow"><div><div class="name">${(r.model_name||r.item_name||'').slice(0,40)}</div><div class="sub">${r.seller_name}</div></div><div class="tag down">${fmt(r.adgDelta)}</div></div>`).join('') || '<div class="footnote">Không có model sụt giảm</div>'}
+      </div>
+    </div>
+
+    <table>
+      <thead><tr>
+        <th>Model</th><th>Seller</th>
+        <th class="num">ADG M-1</th><th class="num">ADG M0</th><th class="num">Δ ADG</th>
+        <th class="num">Offsite M0</th>
+      </tr></thead>
+      <tbody>
+        ${list.slice(0,200).map(r=>`<tr>
+          <td>${(r.model_name||r.item_name||'-').slice(0,50)}</td>
+          <td>${r.seller_name||'-'}</td>
+          <td class="num">${fmtFull(r.adgM1)}</td>
+          <td class="num">${fmtFull(r.adgM0)}</td>
+          <td class="num">${r.adgDelta>=0?'+':''}${fmtFull(r.adgDelta)}</td>
+          <td class="num">${fmtFull(r.offsiteM0)}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+    <div class="footnote">Hiển thị tối đa 200 model có ADG cao nhất (M0 = tháng ${m0}, M-1 = tháng ${m1}). Paid Ads / Livestream / Video không có ở cấp model nên không hiển thị ở đây — xem ở tab Seller performance.</div>
+  `;
+  document.getElementById('model-content').innerHTML = html;
+}
+function setModelSeller(v){ modelState.seller=v; renderModelTab(); }
+
+// ---------------- init ----------------
+document.getElementById('sheetIdInput').value = CONFIG.SHEET_ID;
+reloadData();
+</script>
+</body>
+</html>
